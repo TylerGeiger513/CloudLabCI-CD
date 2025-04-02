@@ -5,6 +5,7 @@ import time
 import logging
 import subprocess
 import ssl
+import json
 import xmlrpc.client as xmlrpc_client
 import xmltodict  # Requires: pip install xmltodict
 
@@ -12,7 +13,6 @@ logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(m
 
 PACKAGE_VERSION = 0.1
 
-# Read credentials from environment variables
 try:
     LOGIN_ID  = os.environ['USER']
     PEM_PWORD = os.environ['PWORD']
@@ -21,7 +21,6 @@ except KeyError:
     logging.error("Missing CloudLab credential environment variables (USER, PWORD, CERT)")
     sys.exit(1)
 
-# XML-RPC server configuration
 XMLRPC_SERVER = "boss.emulab.net"
 XMLRPC_PORT   = 3069
 SERVER_PATH   = "/usr/testbed"
@@ -38,13 +37,11 @@ def do_method(method, params):
     server = xmlrpc_client.ServerProxy(URI, context=ctx)
     meth = getattr(server, "portal." + method)
     meth_args = [PACKAGE_VERSION, params]
-
     try:
         response = meth(*meth_args)
     except xmlrpc_client.Fault as e:
         logging.error("XMLRPC Fault: %s", e.faultString)
         return -1, None
-
     return response.get("code", -1), response
 
 def start_experiment(experiment_name, project_name, profile_name):
@@ -77,8 +74,23 @@ def wait_for_experiment_ready(experiment_name, project_name, max_retries=30, del
     return False
 
 def extract_node_ip(manifest_output):
+    # Try to load as JSON. If successful, extract the XML string.
+    xml_str = None
     try:
-        manifest_dict = xmltodict.parse(manifest_output)
+        manifest_json = json.loads(manifest_output)
+        for key, value in manifest_json.items():
+            if isinstance(value, str) and value.strip().startswith("<rspec"):
+                xml_str = value
+                break
+        if not xml_str:
+            logging.error("No XML manifest found in JSON output.")
+            return None
+    except Exception:
+        # Assume output is raw XML if JSON parsing fails.
+        xml_str = manifest_output
+
+    try:
+        manifest_dict = xmltodict.parse(xml_str)
         node = manifest_dict.get("rspec", {}).get("node")
         if isinstance(node, list):
             node = node[0]
@@ -86,10 +98,7 @@ def extract_node_ip(manifest_output):
         return host.get("@ipv4") if host else None
     except Exception as e:
         logging.error("XML parsing failed: %s", e)
-    # Fallback to regex extraction
-    import re
-    m = re.search(r'ipv4:\s*([\d\.]+)', manifest_output)
-    return m.group(1) if m else None
+        return None
 
 def main():
     project_name = os.environ.get("CLOUDLAB_PROJECT_NAME", "YourProject")
