@@ -142,6 +142,7 @@ def main():
     
     ssh_cmd = [
         "ssh",
+        "--vvv"
         "-o", "StrictHostKeyChecking=no",
         "-i", CERT_PATH,
         f"{LOGIN_ID}@{node_ip}",
