@@ -16,11 +16,9 @@ jobs:
       - name: Install Python Dependencies
         run: pip install xmltodict
 
-      - name: Create PEM file from secret
+      - name: Create PEM file from Base64 secret
         run: |
-          cat <<'EOF' > cloudlab.pem
-          ${{ secrets.CLOUDLAB_PEM }}
-          EOF
+          echo "${{ secrets.CLOUDLAB_PEM_BASE64 }}" | base64 -d > cloudlab.pem
           chmod 600 cloudlab.pem
 
       - name: Run CloudLab Experiment Script
