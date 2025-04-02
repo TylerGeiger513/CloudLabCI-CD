@@ -22,8 +22,8 @@ jobs:
 
       - name: Run CloudLab Experiment Script
         env:
-          USER: ${{ secrets.CLOUDLAB_USERNAME }}
-          PWORD: ${{ secrets.CLOUDLAB_PWORD }}
+          USER: ${{ secrets.CLOUDLAB_USER }}
+          PWORD: ${{ secrets.CLOUDLAB_PASS }}
           CERT: ./cloudlab.pem
           CLOUDLAB_PROJECT_NAME: ${{ secrets.CLOUDLAB_PROJECT_NAME }}
           CLOUDLAB_PROFILE_NAME: ${{ secrets.CLOUDLAB_PROFILE_NAME }}
