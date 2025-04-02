@@ -38,7 +38,6 @@ def do_method(method, params):
 
     server = xmlrpc_client.ServerProxy(URI, context=ctx)
     meth = getattr(server, "portal." + method)
-    # Use the PACKAGE_VERSION constant instead of hardcoding 1.0
     meth_args = [PACKAGE_VERSION, params]
 
     try:
@@ -74,32 +73,55 @@ def get_experiment_manifests(project_name, experiment_name):
     rval, response = do_method("experimentManifests", params)
     return rval, response
 
-def main():
-    # Generate a unique experiment name using a timestamp.
-    experiment_name = "exp-" + str(int(time.time()))
-    project_name    = os.environ.get("CLOUDLAB_PROJECT_NAME", "YourProject")
-    profile_name    = os.environ.get("CLOUDLAB_PROFILE_NAME", "default-profile")
-    
-    logging.info("Using experiment name: %s", experiment_name)
-    
-    # Start the experiment.
-    rval, response = start_experiment(experiment_name, project_name, profile_name)
-    if rval != RESPONSE_SUCCESS:
-        logging.error("Failed to start experiment: %s", response)
-        sys.exit(1)
-    
+def wait_for_experiment_ready(experiment_name, project_name, max_retries=30, delay=20):
     logging.info("Waiting for experiment '%s' to become ready...", experiment_name)
-    for i in range(30):  # Poll for up to ~10 minutes (30 x 20s)
-        time.sleep(20)
+    for i in range(max_retries):
+        time.sleep(delay)
         rval, response = get_experiment_status(project_name, experiment_name)
         status_output = response.get("output", "").lower()
         logging.info("Experiment status: %s", status_output.strip())
         if "ready" in status_output:
-            break
-    else:
-        logging.error("Experiment did not become ready in time")
-        sys.exit(1)
+            logging.info("Experiment '%s' is ready.", experiment_name)
+            return True
+    logging.error("Experiment '%s' did not become ready in time.", experiment_name)
+    return False
+
+def main():
+    # Retrieve project and profile names from environment variables
+    project_name = os.environ.get("CLOUDLAB_PROJECT_NAME", "YourProject")
+    profile_name = os.environ.get("CLOUDLAB_PROFILE_NAME", "default-profile")
     
+    # Use a fixed experiment name (either provided or generated based on the profile)
+    experiment_name = os.environ.get("EXPERIMENT_NAME", f"{profile_name}-experiment")
+    logging.info("Using experiment name: %s", experiment_name)
+    
+    # Check if an experiment with this name is already running.
+    logging.info("Checking status for experiment '%s'...", experiment_name)
+    rval, response = get_experiment_status(project_name, experiment_name)
+    if rval == RESPONSE_SUCCESS:
+        status_output = response.get("output", "").lower()
+        if any(keyword in status_output for keyword in ["ready", "provisioning", "provisioned"]):
+            logging.info("Experiment '%s' is already running with status: %s", experiment_name, status_output.strip())
+        else:
+            logging.info("Experiment '%s' exists but is not in a running state: %s", experiment_name, status_output.strip())
+            logging.info("Attempting to start experiment '%s'...", experiment_name)
+            rval, response = start_experiment(experiment_name, project_name, profile_name)
+            if rval != RESPONSE_SUCCESS:
+                logging.error("Failed to start experiment: %s", response)
+                sys.exit(1)
+            if not wait_for_experiment_ready(experiment_name, project_name):
+                sys.exit(1)
+    else:
+        # No existing experiment found; start a new one.
+        logging.info("No existing experiment found with name '%s'. Starting a new experiment...", experiment_name)
+        rval, response = start_experiment(experiment_name, project_name, profile_name)
+        if rval != RESPONSE_SUCCESS:
+            logging.error("Failed to start experiment: %s", response)
+            sys.exit(1)
+        if not wait_for_experiment_ready(experiment_name, project_name):
+            sys.exit(1)
+    
+    # At this point, the experiment is running.
     # Retrieve experiment manifests to extract the deploy node's IP.
     rval, response = get_experiment_manifests(project_name, experiment_name)
     manifest_output = response.get("output", "")
