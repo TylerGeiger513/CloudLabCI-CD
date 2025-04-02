@@ -10,6 +10,9 @@ import xmlrpc.client as xmlrpc_client
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 
+# Client package version for the API
+PACKAGE_VERSION = 0.1
+
 # Read CloudLab/Emulab credentials from environment variables.
 try:
     LOGIN_ID  = os.environ['USER']
@@ -34,8 +37,9 @@ def do_method(method, params):
     ctx.verify_mode = ssl.CERT_NONE
 
     server = xmlrpc_client.ServerProxy(URI, context=ctx)
-    meth      = getattr(server, "portal." + method)
-    meth_args = [1.0, params]  # Version number can be adjusted if needed
+    meth = getattr(server, "portal." + method)
+    # Use the PACKAGE_VERSION constant instead of hardcoding 1.0
+    meth_args = [PACKAGE_VERSION, params]
 
     try:
         response = meth(*meth_args)
