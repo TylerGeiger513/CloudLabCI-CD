@@ -127,6 +127,7 @@ def main():
     manifest_output = response.get("output", "")
     
     # Simplistic regex to find an IPv4 address in the manifest.
+    logging.info("Experiment manifest output:\n%s", manifest_output)
     m = re.search(r'ipv4:\s*([\d\.]+)', manifest_output)
     if m:
         node_ip = m.group(1)
