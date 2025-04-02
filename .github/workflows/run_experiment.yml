@@ -20,6 +20,9 @@ jobs:
         run: |
           echo "${{ secrets.CLOUDLAB_PEM_BASE64 }}" | base64 -d > cloudlab.pem
           chmod 600 cloudlab.pem
+          
+      - name: Debug-Print decoded PEM
+        run: cat cloudlab.pem
 
       - name: Run CloudLab Experiment Script
         env:
