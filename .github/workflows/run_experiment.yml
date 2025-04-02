@@ -1,0 +1,30 @@
+name: Run CloudLab Experiment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  run-experiment:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create PEM file from secret
+        run: |
+          cat <<'EOF' > cloudlab.pem
+          ${{ secrets.CLOUDLAB_PEM }}
+          EOF
+          chmod 600 cloudlab.pem
+
+      - name: Run CloudLab Experiment Script
+        env:
+          USER: ${{ secrets.CLOUDLAB_USERNAME }}
+          PWORD: ${{ secrets.CLOUDLAB_PWORD }}
+          CERT: ./cloudlab.pem
+          CLOUDLAB_PROJECT_NAME: ${{ secrets.CLOUDLAB_PROJECT_NAME }}
+          CLOUDLAB_PROFILE_NAME: ${{ secrets.CLOUDLAB_PROFILE_NAME }}
+        run: python example.py
