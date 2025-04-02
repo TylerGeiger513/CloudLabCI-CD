@@ -141,23 +141,23 @@ def main():
         sys.exit(1)
     
     ssh_cmd = [
-    "ssh",
-    "-vvv",
-    "-o", "StrictHostKeyChecking=no",
-    "-i", CERT_PATH,
-    f"{LOGIN_ID}@{node_ip}",
-    "hostname"
-]
-logging.info("Executing SSH command: %s", " ".join(ssh_cmd))
-try:
-    result = subprocess.run(ssh_cmd, capture_output=True, text=True, check=True)
-    logging.info("SSH stdout: %s", result.stdout)
-    logging.info("SSH stderr: %s", result.stderr)
-except subprocess.CalledProcessError as e:
-    logging.error("SSH command failed with exit code %s", e.returncode)
-    logging.error("SSH stdout: %s", e.stdout)
-    logging.error("SSH stderr: %s", e.stderr)
-    sys.exit(1)
+        "ssh",
+        "-vvv",
+        "-o", "StrictHostKeyChecking=no",
+        "-i", CERT_PATH,
+        f"{LOGIN_ID}@{node_ip}",
+        "hostname"
+    ]
+    logging.info("Executing SSH command: %s", " ".join(ssh_cmd))
+    try:
+        result = subprocess.run(ssh_cmd, capture_output=True, text=True, check=True)
+        logging.info("SSH stdout: %s", result.stdout)
+        logging.info("SSH stderr: %s", result.stderr)
+    except subprocess.CalledProcessError as e:
+        logging.error("SSH command failed with exit code %s", e.returncode)
+        logging.error("SSH stdout: %s", e.stdout)
+        logging.error("SSH stderr: %s", e.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
