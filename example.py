@@ -86,28 +86,57 @@ def extract_node_ip(manifest_output):
         logging.error("XML parsing failed: %s", e)
         return None
 
-# Simple SSH connection wrapper to mimic the Powder API's SSH abstraction
+# A simple SSH connection abstraction mimicking Powder's API style.
 class SSHConnection:
     def __init__(self, user, host, pem_path, timeout=60):
         self.user = user
         self.host = host
         self.pem_path = pem_path
         self.timeout = timeout
-
-    def command(self, cmd):
-        ssh_cmd = [
+        self.base_cmd = [
             "ssh",
             "-vvv",
             "-o", "StrictHostKeyChecking=no",
             "-i", self.pem_path,
-            f"{self.user}@{self.host}",
-            cmd
+            f"{self.user}@{self.host}"
         ]
-        logging.info("Running SSH command: %s", " ".join(ssh_cmd))
-        result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=self.timeout)
+    
+    def open(self):
+        # In this abstraction, open() simply logs and returns self.
+        logging.info("Opening SSH connection to %s@%s", self.user, self.host)
+        return self
+
+    def command(self, cmd, timeout=None, expected_line=None):
+        timeout = timeout if timeout is not None else self.timeout
+        full_cmd = self.base_cmd + [cmd]
+        logging.info("Running SSH command: %s", " ".join(full_cmd))
+        result = subprocess.run(full_cmd, capture_output=True, text=True, timeout=timeout)
         if result.returncode != 0:
             raise Exception(f"SSH command failed (exit code {result.returncode}): {result.stderr}")
+        if expected_line and expected_line not in result.stdout:
+            raise Exception(f"Expected line '{expected_line}' not found in output.")
         return result.stdout
+
+    def copy_from(self, remote_path, local_path):
+        # Uses scp to copy a file from remote host.
+        scp_cmd = [
+            "scp",
+            "-o", "StrictHostKeyChecking=no",
+            "-i", self.pem_path,
+            f"{self.user}@{self.host}:{remote_path}",
+            local_path
+        ]
+        logging.info("Running SCP command: %s", " ".join(scp_cmd))
+        result = subprocess.run(scp_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise Exception(f"SCP command failed (exit code {result.returncode}): {result.stderr}")
+        return result.stdout
+
+    def close(self, delay=0):
+        if delay:
+            time.sleep(delay)
+        logging.info("Closing SSH connection to %s@%s", self.user, self.host)
+        # No persistent connection to close since we're using subprocess
 
 def main():
     project_name = os.environ.get("CLOUDLAB_PROJECT_NAME", "YourProject")
@@ -149,11 +178,12 @@ def main():
         logging.error("Could not extract node IP from experiment manifests")
         sys.exit(1)
     
-    # Use the SSHConnection abstraction to execute the hostname command.
+    # Using our SSHConnection abstraction in a style similar to Powder
     try:
-        ssh_conn = SSHConnection(LOGIN_ID, node_ip, CERT_PATH)
-        hostname = ssh_conn.command("hostname")
+        ssh_conn = SSHConnection(LOGIN_ID, node_ip, CERT_PATH).open()
+        hostname = ssh_conn.command("hostname", timeout=30)
         logging.info("Remote node hostname: %s", hostname.strip())
+        ssh_conn.close(5)
     except Exception as e:
         logging.error("SSH command failed: %s", e)
         sys.exit(1)
