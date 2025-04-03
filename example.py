@@ -86,7 +86,7 @@ def extract_node_ip(manifest_output):
         logging.error("XML parsing failed: %s", e)
         return None
 
-# A simple SSH connection abstraction mimicking Powder's API style.
+# Simple SSH connection abstraction
 class SSHConnection:
     def __init__(self, user, host, pem_path, timeout=60):
         self.user = user
@@ -102,7 +102,6 @@ class SSHConnection:
         ]
     
     def open(self):
-        # In this abstraction, open() simply logs and returns self.
         logging.info("Opening SSH connection to %s@%s", self.user, self.host)
         return self
 
@@ -118,7 +117,6 @@ class SSHConnection:
         return result.stdout
 
     def copy_from(self, remote_path, local_path):
-        # Uses scp to copy a file from remote host.
         scp_cmd = [
             "scp",
             "-o", "StrictHostKeyChecking=no",
@@ -136,7 +134,15 @@ class SSHConnection:
         if delay:
             time.sleep(delay)
         logging.info("Closing SSH connection to %s@%s", self.user, self.host)
-        # No persistent connection to close since we're using subprocess
+
+def debug_print_pem(file_path, num_lines=2):
+    try:
+        with open(file_path, "r") as f:
+            for i in range(num_lines):
+                line = f.readline().rstrip()
+                logging.info("PEM line %d: %s", i+1, line)
+    except Exception as e:
+        logging.error("Error reading PEM file: %s", e)
 
 def main():
     project_name = os.environ.get("CLOUDLAB_PROJECT_NAME", "YourProject")
@@ -178,7 +184,9 @@ def main():
         logging.error("Could not extract node IP from experiment manifests")
         sys.exit(1)
     
-    # Using our SSHConnection abstraction in a style similar to Powder
+    # Debug: print first two lines of the PEM file.
+    debug_print_pem(CERT_PATH, num_lines=2)
+    
     try:
         ssh_conn = SSHConnection(LOGIN_ID, node_ip, CERT_PATH).open()
         hostname = ssh_conn.command("hostname", timeout=30)
