@@ -7,12 +7,13 @@ import subprocess
 import ssl
 import json
 import xmlrpc.client as xmlrpc_client
-import xmltodict  # Requires: pip install xmltodict
+import xmltodict  # pip install xmltodict
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 
 PACKAGE_VERSION = 0.1
 
+# Read credentials from environment variables
 try:
     LOGIN_ID  = os.environ['USER']
     PEM_PWORD = os.environ['PWORD']
@@ -74,23 +75,8 @@ def wait_for_experiment_ready(experiment_name, project_name, max_retries=30, del
     return False
 
 def extract_node_ip(manifest_output):
-    # Try to load as JSON. If successful, extract the XML string.
-    xml_str = None
     try:
-        manifest_json = json.loads(manifest_output)
-        for key, value in manifest_json.items():
-            if isinstance(value, str) and value.strip().startswith("<rspec"):
-                xml_str = value
-                break
-        if not xml_str:
-            logging.error("No XML manifest found in JSON output.")
-            return None
-    except Exception:
-        # Assume output is raw XML if JSON parsing fails.
-        xml_str = manifest_output
-
-    try:
-        manifest_dict = xmltodict.parse(xml_str)
+        manifest_dict = xmltodict.parse(manifest_output)
         node = manifest_dict.get("rspec", {}).get("node")
         if isinstance(node, list):
             node = node[0]
@@ -99,6 +85,29 @@ def extract_node_ip(manifest_output):
     except Exception as e:
         logging.error("XML parsing failed: %s", e)
         return None
+
+# Simple SSH connection wrapper to mimic the Powder API's SSH abstraction
+class SSHConnection:
+    def __init__(self, user, host, pem_path, timeout=60):
+        self.user = user
+        self.host = host
+        self.pem_path = pem_path
+        self.timeout = timeout
+
+    def command(self, cmd):
+        ssh_cmd = [
+            "ssh",
+            "-vvv",
+            "-o", "StrictHostKeyChecking=no",
+            "-i", self.pem_path,
+            f"{self.user}@{self.host}",
+            cmd
+        ]
+        logging.info("Running SSH command: %s", " ".join(ssh_cmd))
+        result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=self.timeout)
+        if result.returncode != 0:
+            raise Exception(f"SSH command failed (exit code {result.returncode}): {result.stderr}")
+        return result.stdout
 
 def main():
     project_name = os.environ.get("CLOUDLAB_PROJECT_NAME", "YourProject")
@@ -140,23 +149,13 @@ def main():
         logging.error("Could not extract node IP from experiment manifests")
         sys.exit(1)
     
-    ssh_cmd = [
-        "ssh",
-        "-vvv",
-        "-o", "StrictHostKeyChecking=no",
-        "-i", CERT_PATH,
-        f"{LOGIN_ID}@{node_ip}",
-        "hostname"
-    ]
-    logging.info("Executing SSH command: %s", " ".join(ssh_cmd))
+    # Use the SSHConnection abstraction to execute the hostname command.
     try:
-        result = subprocess.run(ssh_cmd, capture_output=True, text=True, check=True)
-        logging.info("SSH stdout: %s", result.stdout)
-        logging.info("SSH stderr: %s", result.stderr)
-    except subprocess.CalledProcessError as e:
-        logging.error("SSH command failed with exit code %s", e.returncode)
-        logging.error("SSH stdout: %s", e.stdout)
-        logging.error("SSH stderr: %s", e.stderr)
+        ssh_conn = SSHConnection(LOGIN_ID, node_ip, CERT_PATH)
+        hostname = ssh_conn.command("hostname")
+        logging.info("Remote node hostname: %s", hostname.strip())
+    except Exception as e:
+        logging.error("SSH command failed: %s", e)
         sys.exit(1)
 
 if __name__ == "__main__":
