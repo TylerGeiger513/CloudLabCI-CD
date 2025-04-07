@@ -20,7 +20,6 @@ jobs:
         run: |
           echo "${{ secrets.CLOUDLAB_PEM_BASE64 }}" | base64 -d > cloudlab.pem
           chmod 600 cloudlab.pem
-          head -n 20 cloudlab.pem
 
       - name: Run CloudLab Experiment Script
         env:
