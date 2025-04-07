@@ -26,13 +26,22 @@ node.routable_control_ip = True
 bs = node.Blockstore("bs", "/mydata")
 bs.size = "20GB"
 
-node.addService(pg.Execute(shell="sh", command=f"""
-#!/bin/bash
-USER="tg996676"
-echo '{params.CLOUDLAB_SSH_PUB_KEY}' | tee /home/$USER/.ssh/authorized_keys /local/logs/authorized_keys.txt
-chmod 600 /home/$USER/.ssh/authorized_keys
-echo "Resolved USER=$USER" > /local/logs/who_was_user.txt
+node.addService(pg.Execute(shell="/bin/sh", command=f"""
+until id {USER}; do
+  echo 'Waiting for user {USER}...' >> /local/logs/ssh_debug.log
+  sleep 2
+done
+
+mkdir -p /users/{USER}/.ssh
+echo '{params.CLOUDLAB_SSH_PUB_KEY}' > /users/{USER}/.ssh/authorized_keys
+chmod 600 /users/{USER}/.ssh/authorized_keys
+chown -R {USER}:{USER} /users/{USER}/.ssh
+
+echo 'KEY_INJECTED' > /local/logs/ssh_injection_status.txt
+echo 'Resolved USER={USER}' > /local/logs/who_was_user.txt
+cat /users/{USER}/.ssh/authorized_keys > /local/logs/authorized_keys.txt
 """))
+
 
 
 pc.printRequestRSpec(request)
