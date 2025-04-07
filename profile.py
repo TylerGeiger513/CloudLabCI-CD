@@ -36,14 +36,15 @@ bs.size = "20GB"
 pub_key = params.value
 
 # Add startup script to inject SSH key
-node.addService(pg.Execute(shell="sh", command=f"""
+node.addService(pg.Execute(shell="sh", command=f"""\
 #!/bin/bash
 USER=ubuntu
 mkdir -p /home/$USER/.ssh
-echo '{pub_key}' >> /home/$USER/.ssh/authorized_keys
+echo '{params.CLOUDLAB_SSH_PUB_KEY}' >> /home/$USER/.ssh/authorized_keys
 chmod 600 /home/$USER/.ssh/authorized_keys
 chown -R $USER:$USER /home/$USER/.ssh
-echo '{pub_key}' > /local/logs/injected_key.txt
+echo "KEY_INJECTED" > /local/logs/ssh_injection_status.txt
+cat /home/$USER/.ssh/authorized_keys > /local/logs/authorized_keys.txt
 """))
 
 # Output the request RSpec
