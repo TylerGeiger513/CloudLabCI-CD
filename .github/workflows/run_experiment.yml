@@ -44,4 +44,4 @@ jobs:
           echo "$PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           NODE_IP=$(cat node_ip.txt)
-          ssh -o StrictHostKeyChecking=no youruser@$NODE_IP 'echo "Connected via SSH!"'
+          ssh -o StrictHostKeyChecking=no ubuntu@$NODE_IP 'echo "Connected via SSH!"'
