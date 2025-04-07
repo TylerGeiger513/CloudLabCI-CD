@@ -75,12 +75,22 @@ def wait_for_experiment_ready(experiment_name, project_name, max_retries=30, del
 
 def extract_node_ip(manifest_output):
     try:
-        manifest_dict = xmltodict.parse(manifest_output)
+        # Step 1: Parse JSON first
+        json_manifest = json.loads(manifest_output)
+
+        # Step 2: Extract the XML string (it's the value of the only key in the dict)
+        xml_string = next(iter(json_manifest.values()))
+
+        # Step 3: Parse the XML
+        manifest_dict = xmltodict.parse(xml_string)
+
+        # Step 4: Extract node info
         node = manifest_dict.get("rspec", {}).get("node")
         if isinstance(node, list):
             node = node[0]
         host = node.get("host")
         return host.get("@ipv4") if host else None
+
     except Exception as e:
         logging.error("XML parsing failed: %s", e)
         return None
