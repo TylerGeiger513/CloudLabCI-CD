@@ -28,19 +28,20 @@ bs.size = "20GB"
 
 node.addService(pg.Execute(shell="sh", command=f"""
 #!/bin/bash
-USER=tg996676
-for i in {{1..10}}; do
-    if id "$USER" >/dev/null 2>&1; then
-        mkdir -p /home/$USER/.ssh
-        echo '{params.CLOUDLAB_SSH_PUB_KEY}' > /home/$USER/.ssh/authorized_keys
-        chmod 600 /home/$USER/.ssh/authorized_keys
-        chown -R $USER:$USER /home/$USER/.ssh
-        cat /home/$USER/.ssh/authorized_keys > /local/logs/authorized_keys.txt
-        echo "KEY_INJECTED" > /local/logs/ssh_injection_status.txt
-        break
-    fi
-    sleep 3
-done
+
+USERNAME=ciuser
+PUBKEY='{params.CLOUDLAB_SSH_PUB_KEY}'
+
+# Create user and set up key
+useradd -m -s /bin/bash $USERNAME
+mkdir -p /home/$USERNAME/.ssh
+echo "$PUBKEY" > /home/$USERNAME/.ssh/authorized_keys
+chmod 600 /home/$USERNAME/.ssh/authorized_keys
+chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
+
+# Log results
+echo "$PUBKEY" > /local/logs/authorized_keys.txt
+echo "CI_USER_READY" > /local/logs/ssh_injection_status.txt
 """))
 
 
