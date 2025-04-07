@@ -8,7 +8,7 @@ request = pc.makeRequestRSpec()
 
 tourDescription = \
 """
-This profile spins up a node, installs Docker, Minikube, Skaffold, kubectl, and deploys the app automatically using skaffold
+This profile spins up a node, installs Docker, Minikube, Skaffold, kubectl, and deploys the app automatically using skaffold-
 """
 tour = IG.Tour()
 tour.Description(IG.Tour.TEXT, tourDescription)
