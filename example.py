@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(m
 
 PACKAGE_VERSION = 0.1
 
-# Read credentials from environment variables
+# Read credentials from environment variables.
 try:
     LOGIN_ID  = os.environ['USER']
     PEM_PWORD = os.environ['PWORD']
