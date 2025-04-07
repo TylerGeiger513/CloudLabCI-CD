@@ -29,21 +29,26 @@ bs.size = "20GB"
 username = "tg996676"
 
 node.addService(pg.Execute(shell="/bin/sh", command=f"""
-mkdir -p /local/logs
-echo '[INFO] Script started' > /local/logs/ssh_debug.log
+echo '[INFO] Writing startup script...' > /local/init.log
+cat << 'EOF' > /local/setup.sh
+#!/bin/sh
 
-# Wait for user to exist (max 60s)
+LOG="/local/logs/ssh_debug.log"
+mkdir -p /local/logs
+echo "[START] SSH injection at $(date)" > $LOG
+
+# Wait for user account
 for i in $(seq 1 30); do
   if id {username} >/dev/null 2>&1; then
-    echo '[INFO] User {username} exists' >> /local/logs/ssh_debug.log
+    echo "[INFO] Found user {username}" >> $LOG
     break
   fi
-  echo '[WAIT] Waiting for user {username}...' >> /local/logs/ssh_debug.log
+  echo "[WAIT] Waiting for user {username}..." >> $LOG
   sleep 2
 done
 
 if ! id {username} >/dev/null 2>&1; then
-  echo '[ERROR] User {username} not found after waiting.' >> /local/logs/ssh_debug.log
+  echo "[ERROR] User {username} not found" >> $LOG
   exit 1
 fi
 
@@ -52,11 +57,14 @@ echo '{params.CLOUDLAB_SSH_PUB_KEY}' > /users/{username}/.ssh/authorized_keys
 chmod 600 /users/{username}/.ssh/authorized_keys
 chown -R {username}:{username} /users/{username}/.ssh
 
-echo '[SUCCESS] SSH key injected for {username}' >> /local/logs/ssh_debug.log
-echo 'Resolved USER={username}' > /local/logs/who_was_user.txt
+echo "Resolved USER={username}" > /local/logs/who_was_user.txt
 cat /users/{username}/.ssh/authorized_keys > /local/logs/authorized_keys.txt
-"""))
+echo "[DONE] SSH key injected at $(date)" >> $LOG
+EOF
 
+chmod +x /local/setup.sh
+nohup /local/setup.sh > /local/setup_output.log 2>&1 &
+"""))
 
 
 
