@@ -16,13 +16,14 @@ jobs:
       - name: Install Python Dependencies
         run: pip install xmltodict
 
-      - name: Generate SSH Keypair for this run
+      - name: SSH into CloudLab node
         run: |
-          ssh-keygen -t rsa -b 4096 -f id_rsa -N ""
-          cat id_rsa.pub > public_key.txt
-          echo "PRIVATE_KEY<<EOF" >> $GITHUB_ENV
-          cat id_rsa >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          mkdir -p ~/.ssh
+          echo "$PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          NODE_IP=$(cat node_ip.txt)
+          ssh -o StrictHostKeyChecking=no youruser@$NODE_IP 'echo "Connected via SSH!"'
+
 
       - name: Create PEM file from Base64 secret
         run: |
