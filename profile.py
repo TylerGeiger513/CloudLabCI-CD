@@ -27,10 +27,11 @@ bs = node.Blockstore("bs", "/mydata")
 bs.size = "20GB"
 
 username = "tg996676"
-
 node.addService(pg.Execute(shell="/bin/sh", command=f"""
+mkdir -p /local/logs
 echo '[INFO] Writing startup script...' > /local/init.log
-cat << 'EOF' > /local/setup.sh
+
+cat << EOF > /local/setup.sh
 #!/bin/sh
 
 LOG="/local/logs/ssh_debug.log"
@@ -63,8 +64,9 @@ echo "[DONE] SSH key injected at $(date)" >> $LOG
 EOF
 
 chmod +x /local/setup.sh
-nohup /local/setup.sh > /local/setup_output.log 2>&1 &
+bash /local/setup.sh > /local/setup_output.log 2>&1
 """))
+
 
 
 
