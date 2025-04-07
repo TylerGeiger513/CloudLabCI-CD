@@ -44,14 +44,21 @@ def do_method(method, params):
         return -1, None
     return response.get("code", -1), response
 
-def start_experiment(experiment_name, project_name, profile_name):
+def start_experiment(experiment_name, project_name, profile_name, ssh_pub_key):
     params = {
         "name": experiment_name,
         "proj": project_name,
-        "profile": f"{project_name},{profile_name}"
+        "profile": f"{project_name},{profile_name}",
+        "parambindings": json.dumps([
+            {
+                "name": "CLOUDLAB_SSH_PUB_KEY",
+                "value": ssh_pub_key
+            }
+        ])
     }
     logging.info("Starting experiment with parameters: %s", params)
     return do_method("startExperiment", params)
+
 
 def get_experiment_status(project_name, experiment_name):
     params = {"experiment": f"{project_name},{experiment_name}"}
@@ -99,41 +106,40 @@ def main():
     project_name = os.environ.get("CLOUDLAB_PROJECT_NAME", "YourProject")
     profile_name = os.environ.get("CLOUDLAB_PROFILE_NAME", "default-profile")
     experiment_name = os.environ.get("EXPERIMENT_NAME", f"{profile_name}-experiment")
+
+    with open("public_key.txt") as f:
+        ssh_pub_key = f.read().strip()
+
     logging.info("Using experiment name: %s", experiment_name)
-    
-    logging.info("Checking status for experiment '%s'...", experiment_name)
+
+    # Start or check experiment
     rval, response = get_experiment_status(project_name, experiment_name)
     if rval == RESPONSE_SUCCESS:
         status_output = response.get("output", "").lower()
         if any(keyword in status_output for keyword in ["ready", "provisioning", "provisioned"]):
-            logging.info("Experiment '%s' is already running: %s", experiment_name, status_output.strip())
+            logging.info("Experiment already running: %s", status_output.strip())
         else:
-            logging.info("Experiment '%s' exists but is not running: %s", experiment_name, status_output.strip())
-            rval, response = start_experiment(experiment_name, project_name, profile_name)
-            if rval != RESPONSE_SUCCESS:
-                logging.error("Failed to start experiment: %s", response)
-                sys.exit(1)
-            if not wait_for_experiment_ready(experiment_name, project_name):
+            rval, response = start_experiment(experiment_name, project_name, profile_name, ssh_pub_key)
+            if rval != RESPONSE_SUCCESS or not wait_for_experiment_ready(experiment_name, project_name):
                 sys.exit(1)
     else:
-        logging.info("No existing experiment found with name '%s'. Starting a new experiment...", experiment_name)
-        rval, response = start_experiment(experiment_name, project_name, profile_name)
-        if rval != RESPONSE_SUCCESS:
-            logging.error("Failed to start experiment: %s", response)
+        rval, response = start_experiment(experiment_name, project_name, profile_name, ssh_pub_key)
+        if rval != RESPONSE_SUCCESS or not wait_for_experiment_ready(experiment_name, project_name):
             sys.exit(1)
-        if not wait_for_experiment_ready(experiment_name, project_name):
-            sys.exit(1)
-    
+
+    # Parse manifest for node IP
     rval, response = get_experiment_manifests(project_name, experiment_name)
     manifest_output = response.get("output", "")
     logging.info("Experiment manifest output:\n%s", manifest_output)
-    
     node_ip = extract_node_ip(manifest_output)
     if node_ip:
         logging.info("Found deploy node IP: %s", node_ip)
+        with open("node_ip.txt", "w") as f:
+            f.write(node_ip)
     else:
         logging.error("Could not extract node IP from experiment manifests")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
