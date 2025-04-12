@@ -3,7 +3,7 @@ name: Start Node and SSH into Repository
 on:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   start-node:
@@ -15,31 +15,34 @@ jobs:
 
     - name: Set up CloudLab credentials
       run: |
+        # Decode and save the PEM key from base64
         echo "${{ secrets.CLOUDLAB_PEM_BASE64 }}" | base64 --decode > cloudlab.pem
         chmod 600 cloudlab.pem
-        export USER=${{ secrets.CLOUDLAB_USER }}
-        export PWORD=${{ secrets.CLOUDLAB_PASS }}
-        export PROJECT_NAME=${{ secrets.CLOUDLAB_PROJECT_NAME }}
-        export PROFILE_NAME=${{ secrets.CLOUDLAB_PROFILE_NAME }}
-        export CERT_PATH="./cloudlab.pem"
-      
-    - name: Start the Powder experiment
+
+        # Set the necessary environment variables for CloudLab
+        echo "USER=${{ secrets.CLOUDLAB_USER }}" >> $GITHUB_ENV
+        echo "PWORD=${{ secrets.CLOUDLAB_PASS }}" >> $GITHUB_ENV
+        echo "PROJECT_NAME=${{ secrets.CLOUDLAB_PROJECT_NAME }}" >> $GITHUB_ENV
+        echo "PROFILE_NAME=${{ secrets.CLOUDLAB_PROFILE_NAME }}" >> $GITHUB_ENV
+        echo "CERT_PATH=./cloudlab.pem" >> $GITHUB_ENV
+
+        echo "CloudLab environment variables set."
+
+    - name: Install necessary dependencies
       run: |
-        # Install necessary dependencies
         sudo apt-get update
         sudo apt-get install -y python3-pip
         pip3 install -r requirements.txt
 
-        # Run the Python script to start the experiment
-        python3 example.py
-
-    - name: SSH into the node
+    - name: Start the Powder experiment
       run: |
-        # Assuming the node is set up and SSH is configured
-        ssh -o StrictHostKeyChecking=no -i cloudlab.pem $USER@<node-ip> "cd /local/repository && git pull && python3 example.py"
+        # Run the Python script to start the experiment using the powder/ modules
+        python3 example.py
       env:
-        CLOUDLAB_USER: ${{ secrets.CLOUDLAB_USER }}
-        CLOUDLAB_PASS: ${{ secrets.CLOUDLAB_PASS }}
-        CLOUDLAB_PROJECT_NAME: ${{ secrets.CLOUDLAB_PROJECT_NAME }}
-        CLOUDLAB_PROFILE_NAME: ${{ secrets.CLOUDLAB_PROFILE_NAME }}
+        USER: ${{ secrets.CLOUDLAB_USER }}
+        PWORD: ${{ secrets.CLOUDLAB_PASS }}
+        PROJECT_NAME: ${{ secrets.CLOUDLAB_PROJECT_NAME }}
+        PROFILE_NAME: ${{ secrets.CLOUDLAB_PROFILE_NAME }}
+        CERT_PATH: ./cloudlab.pem
         CLOUDLAB_PEM_BASE64: ${{ secrets.CLOUDLAB_PEM_BASE64 }}
+
