@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 import logging
 import mmap
-import multiprocessing as mp
-import powder.experiment as pexp
 import random
 import re
 import string
 import sys
 import time
+import os
+import multiprocessing as mp
+
+sys.path.append(os.path.join(os.path.dirname(__file__), 'powder'))
+
+import powder.experiment as pexp
 
 logging.basicConfig(
     level=logging.DEBUG,
