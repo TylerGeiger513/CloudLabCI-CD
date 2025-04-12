@@ -43,6 +43,6 @@ jobs:
         PWORD: ${{ secrets.CLOUDLAB_PASS }}
         PROJECT_NAME: ${{ secrets.CLOUDLAB_PROJECT_NAME }}
         PROFILE_NAME: ${{ secrets.CLOUDLAB_PROFILE_NAME }}
-        CERT_PATH: ./cloudlab.pem
+        CERT: ./cloudlab.pem
         CLOUDLAB_PEM_BASE64: ${{ secrets.CLOUDLAB_PEM_BASE64 }}
 
