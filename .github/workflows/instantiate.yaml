@@ -3,7 +3,7 @@ name: Start Node and SSH into Repository
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   start-node:
