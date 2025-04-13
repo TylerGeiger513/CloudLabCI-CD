@@ -105,11 +105,28 @@ class PowderExperiment:
         rval, response = prpc.get_experiment_manifests(self.project_name,
                                                        self.experiment_name)
         if rval == prpc.RESPONSE_SUCCESS:
-            response_json = json.loads(response['output'])
-            self._manifests = [xmltodict.parse(response_json[key]) for key in response_json.keys()]
-            logging.info('got manifests')
+            try:
+                response_json = json.loads(response['output'])
+                # --- Add logging for raw XML ---
+                logging.debug("Raw manifests received from API:")
+                for key, xml_content in response_json.items():
+                    logging.debug(f"--- Manifest Key: {key} ---")
+                    logging.debug(xml_content)
+                    logging.debug("--- End Manifest ---")
+                # --- End logging ---
+                
+                self._manifests = [xmltodict.parse(response_json[key]) for key in response_json.keys()]
+                logging.info('got manifests')
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to decode JSON response from get_experiment_manifests: {e}")
+                logging.error(f"Raw response output: {response.get('output', 'N/A')}")
+                self._manifests = None # Ensure manifests is None if parsing fails
+            except Exception as e:
+                logging.error(f"Error parsing manifests with xmltodict: {e}", exc_info=True)
+                self._manifests = None # Ensure manifests is None if parsing fails
         else:
-            logging.error('failed to get manifests')
+            logging.error(f"Failed to get manifests. API response code: {rval}, Output: {response.get('output', 'N/A')}")
+            self._manifests = None # Ensure manifests is None on API failure
 
         return self
 
