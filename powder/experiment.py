@@ -113,47 +113,88 @@ class PowderExperiment:
 
         return self
 
+    # ... inside the PowderExperiment class ...
+
     def _parse_manifests(self):
-        """Parse experiment manifests and add nodes to lookup table."""
+        """Parse experiment manifests and add nodes to lookup table.
+        Includes detailed logging by default for debugging manifest structure issues.
+        """
+        # 1. Check if manifests were successfully retrieved
         if not self._manifests:
-            logging.warning("No manifests available to parse.")
+            logging.warning("Manifest parsing skipped: No manifests were retrieved or available (self._manifests is empty).")
             return self
+        
+        logging.info(f"Starting to parse {len(self._manifests)} manifest(s).")
 
-        for manifest in self._manifests:
-            # Ensure 'rspec' and 'node' keys exist and 'node' is a list
-            if 'rspec' not in manifest or 'node' not in manifest['rspec']:
-                logging.warning("Manifest missing 'rspec' or 'node' key.")
+        for i, manifest in enumerate(self._manifests):
+            logging.debug(f"Processing manifest {i+1}/{len(self._manifests)}.")
+            
+            # 2. Check for top-level 'rspec' key
+            if 'rspec' not in manifest:
+                logging.warning(f"Manifest parsing warning: Manifest {i+1} skipped - missing 'rspec' key. Manifest content: {manifest}")
                 continue
-
-            nodes_data = manifest['rspec']['node']
-            # Handle case where there's only one node (xmltodict might not make it a list)
+                
+            rspec_data = manifest['rspec']
+            
+            # 3. Check for 'node' key within 'rspec'
+            if 'node' not in rspec_data:
+                logging.warning(f"Manifest parsing warning: Manifest {i+1} skipped - 'rspec' dictionary missing 'node' key. Rspec content: {rspec_data}")
+                continue
+                
+            nodes_data = rspec_data['node']
+            
+            # 4. Handle case where 'node' might be a single dict instead of a list
             if not isinstance(nodes_data, list):
+                logging.debug(f"Manifest {i+1}: 'node' data was a single dictionary, converting to list.")
                 nodes_data = [nodes_data]
+                
+            logging.info(f"Manifest {i+1}: Found {len(nodes_data)} node entries to process.")
 
-            for node in nodes_data:
-                # only need to add nodes with public IP addresses for now
+            for j, node in enumerate(nodes_data):
+                logging.debug(f"Processing node {j+1}/{len(nodes_data)} in manifest {i+1}.")
+                
+                # 5. Basic check: Ensure 'node' entry is a dictionary
+                if not isinstance(node, dict):
+                    logging.warning(f"Manifest parsing warning: Node entry {j+1} in manifest {i+1} is not a dictionary, skipping. Node data: {node}")
+                    continue
+
+                # 6. Use .get() for safer access and add detailed checks
                 try:
-                    # Check if 'host' exists and is a dictionary before accessing sub-keys
-                    if isinstance(node.get('host'), dict):
-                        hostname = node['host'].get('@name')
-                        ipv4 = node['host'].get('@ipv4')
-                        client_id = node.get('@client_id')
+                    client_id = node.get('@client_id')
+                    host_data = node.get('host') # Get the 'host' dictionary safely
 
-                        if hostname and ipv4 and client_id:
-                            self.nodes[client_id] = Node(client_id=client_id, ip_address=ipv4,
-                                                         hostname=hostname)
-                            logging.info('parsed manifests for node {}'.format(client_id))
-                        else:
-                            logging.warning(f"Skipping node due to missing info: client_id={client_id}, hostname={hostname}, ipv4={ipv4}")
-                    else:
-                        logging.warning(f"Skipping node {node.get('@client_id', 'unknown')} because 'host' data is not a dictionary: {node.get('host')}")
+                    if not client_id:
+                        logging.warning(f"Manifest parsing warning: Node {j+1} in manifest {i+1} skipped - missing '@client_id'. Node data: {node}")
+                        continue
 
-                except KeyError as e:
-                    logging.warning(f"KeyError while parsing node manifest: {e}. Node data: {node}")
+                    # 7. Check if 'host' data exists and is a dictionary
+                    if not isinstance(host_data, dict):
+                        logging.warning(f"Manifest parsing warning: Node '{client_id}' (entry {j+1}, manifest {i+1}) skipped - 'host' key is missing or its value is not a dictionary. Host data: {host_data}")
+                        continue
+                        
+                    # 8. Safely get hostname and ipv4 from the 'host' dictionary
+                    hostname = host_data.get('@name')
+                    ipv4 = host_data.get('@ipv4')
+
+                    # 9. Check if essential host details were found
+                    if not hostname:
+                        logging.warning(f"Manifest parsing warning: Node '{client_id}' (entry {j+1}, manifest {i+1}) skipped - missing '@name' in 'host' dictionary. Host data: {host_data}")
+                        continue
+                    if not ipv4:
+                        logging.warning(f"Manifest parsing warning: Node '{client_id}' (entry {j+1}, manifest {i+1}) skipped - missing '@ipv4' in 'host' dictionary. Host data: {host_data}")
+                        continue
+
+                    # 10. If all checks pass, create the Node object
+                    # Ensure the Node class is defined correctly elsewhere
+                    self.nodes[client_id] = Node(client_id=client_id, ip_address=ipv4,
+                                                 hostname=hostname)
+                    logging.info(f"Successfully parsed and added node: client_id='{client_id}', ip_address='{ipv4}', hostname='{hostname}'")
+
                 except Exception as e:
-                    logging.error(f"Unexpected error parsing node manifest: {e}. Node data: {node}")
+                    # Catch any other unexpected errors during node processing
+                    logging.error(f"Manifest parsing error: Unexpected exception while processing node {j+1} in manifest {i+1}. Error: {e}. Node data: {node}", exc_info=True) # Log traceback
 
-
+        logging.info(f"Finished parsing manifests. Total nodes added: {len(self.nodes)}")
         return self
 
     def _get_status(self):
