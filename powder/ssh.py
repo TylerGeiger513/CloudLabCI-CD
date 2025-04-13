@@ -251,7 +251,7 @@ class SSHConnection:
                 withexitstatus=True, 
                 encoding='utf-8', 
                 events=events,
-                logfile=sys.stdout.buffer # Log SCP output directly for debugging
+               # logfile=sys.stdout.buffer # Log SCP output directly for debugging
             )
             
             if exit_status == 0:

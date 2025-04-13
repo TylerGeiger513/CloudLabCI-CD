@@ -113,49 +113,89 @@ class OAINoS1Controlled:
     # --- New method for deploy-node setup ---
         # --- New method for deploy-node setup ---
     def _setup_deploy_node(self):
-        """Sets up the deploy-node."""
+        """Sets up the deploy-node, waiting for the repository clone to complete."""
         logging.info('Setting up deploy-node...')
         log_filename = 'setup_deploy_node.log'
-        success_marker = b'Deploy node setup complete!' # Define a success marker
-        
+        success_marker = b'Deploy node setup complete!'
+        repo_dir = "/local/repository"
+        max_wait_time = 300 # Max seconds to wait for repo
+        wait_interval = 10  # Seconds between checks
+
         try:
-            # Use self.exp.nodes['deploy-node'] which was verified in _start_powder_experiment
             ssh_deploy = self.exp.nodes['deploy-node'].ssh.open()
-            
-            # --- Add hostname -f to the command string ---
+
+            # --- Wait loop for repository directory ---
+            logging.info(f"Waiting for repository directory '{repo_dir}' to exist...")
+            start_time = time.time()
+            repo_exists = False
+            while time.time() - start_time < max_wait_time:
+                # Use a simple command to check if the directory exists
+                check_cmd = f"test -d {repo_dir} && echo EXISTS"
+                try:
+                    # Use a short timeout for the check
+                    check_output = ssh_deploy.command(check_cmd, expectedline="EXISTS", timeout=15) 
+                    logging.info(f"Repository directory '{repo_dir}' found.")
+                    repo_exists = True
+                    break # Exit the loop if directory found
+                except (TimeoutError, ConnectionAbortedError):
+                    # Expected if the directory doesn't exist yet or command fails
+                    logging.info(f"Directory '{repo_dir}' not found yet, waiting {wait_interval}s...")
+                    time.sleep(wait_interval)
+                except Exception as check_e:
+                     logging.error(f"Error checking for directory '{repo_dir}': {check_e}")
+                     # Break the loop on unexpected errors during check
+                     break 
+
+            if not repo_exists:
+                logging.error(f"Repository directory '{repo_dir}' did not appear within {max_wait_time} seconds.")
+                ssh_deploy.close()
+                return False
+            # --- End wait loop ---
+
+            # --- Proceed with original command chain ---
             cmd = (
-                "cd /local/repository && "
+                f"cd {repo_dir} && " # Use variable
                 "echo '--- Checking repository ---' && "
                 "ls -la && "
                 "echo '--- Running hostname ---' && "
                 "hostname && "
-                "echo '--- Running hostname -f ---' && " # Add echo for clarity
-                "hostname -f && "                       # Add hostname -f command
-                f"echo '{success_marker.decode()}'" # Echo the success marker (must be last)
+                "echo '--- Running hostname -f ---' && "
+                "hostname -f && "
+                f"echo '{success_marker.decode()}'"
             )
-            # --- End command modification ---
-            
             full_cmd = f"stdbuf -o0 {cmd} 2>&1 | stdbuf -o0 tee /tmp/{log_filename}"
 
-            # --- Capture and log the output ---
-            # Execute command, expecting the success marker
+            # Execute command, expecting the success marker (restore original timeout)
             output = ssh_deploy.command(full_cmd, expectedline=success_marker.decode(), timeout=120) 
-            # Log the captured output to the runner's log
-            logging.info(f"--- Remote Command Output (deploy-node) ---\n{output.strip()}") 
-            # --- End output capture and logging ---
-            
-            # Copy log back (optional now, but good for full debugging)
+            logging.info(f"--- Remote Command Output (deploy-node) ---\n{output.strip()}")
+            # --- End original command chain ---
+
+            # Copy log back and close
             ssh_deploy.copy_from(remote_path=f'/tmp/{log_filename}', local_path=f'./{log_filename}')
             ssh_deploy.close(5)
 
-            # Check the local log file for the success marker (still useful as a final check)
+            # Check log file
             if self._find_bytes_in_file(bytestr=success_marker, filename=log_filename):
                 logging.info('deploy-node setup complete.')
                 return True
             else:
-                # This case is less likely now if the command() succeeded, but keep for robustness
                 logging.error(f'deploy-node setup failed: Success marker not found in log file. Check {log_filename}.')
                 return False
+
+        except KeyError:
+            logging.error("Failed to setup deploy-node: Node 'deploy-node' not found in experiment nodes.")
+            return False
+        except Exception as e:
+            logging.error(f"An error occurred during deploy-node setup: {e}", exc_info=True)
+            # Attempt to copy log file even if command failed before completion
+            try:
+                if 'ssh_deploy' in locals() and ssh_deploy.ssh and not ssh_deploy.ssh.closed:
+                     ssh_deploy.copy_from(remote_path=f'/tmp/{log_filename}', local_path=f'./{log_filename}')
+                     ssh_deploy.close(5)
+                # Removed the extra copy attempt block for simplicity, main one should suffice
+            except Exception as copy_e:
+                 logging.error(f"Could not retrieve log file '{log_filename}' after setup error: {copy_e}")
+            return False
                 
         except KeyError:
             logging.error("Failed to setup deploy-node: Node 'deploy-node' not found in experiment nodes.")
