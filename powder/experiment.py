@@ -38,6 +38,7 @@ class PowderExperiment:
     EXPERIMENT_READY = 3
     EXPERIMENT_FAILED = 4
     EXPERIMENT_NULL = 5
+    EXPERIMENT_UNKNOWN = 6 # Add an unknown status
 
     POLL_INTERVAL_S = 20
     PROVISION_TIMEOUT_S = 1800
@@ -61,31 +62,98 @@ class PowderExperiment:
                                                                                              profile_name,
                                                                                              project_name))
 
+    def check_status(self):
+        """Checks the current status of the experiment without attempting to start it."""
+        logging.info(f"Checking status for experiment '{self.experiment_name}'...")
+        self._get_status() # Updates self.status and potentially fetches manifests if ready
+        logging.info(f"Status check complete. Current status: {self.status}")
+        return self.status
+
     def start_and_wait(self):
-        """Start the experiment and wait for READY or FAILED status."""
-        logging.info('starting experiment {}'.format(self.experiment_name))
-        rval, response = prpc.start_experiment(self.experiment_name,
-                                            self.project_name,
-                                            self.profile_name)
-        if rval == prpc.RESPONSE_SUCCESS:
-            self._get_status()
-            logging.info(f"Initial status: {self.status}, still_provisioning: {getattr(self, 'still_provisioning', 'Not set')}")
+        """Start the experiment if not already running and wait for READY or FAILED status."""
+        # First, check the status without trying to start
+        current_status = self.check_status()
 
-            poll_count = 0
-            while self.still_provisioning and poll_count < self._poll_count_max:
-                logging.info(f"Polling experiment status (attempt {poll_count+1}/{self._poll_count_max})")
-                self._get_status()
-                poll_count += 1
-                
-                if self.still_provisioning and poll_count < self._poll_count_max:
-                    logging.info(f"Waiting {self.POLL_INTERVAL_S} seconds before next status check...")
-                    time.sleep(self.POLL_INTERVAL_S)
+        if current_status == self.EXPERIMENT_READY:
+            logging.info(f"Experiment '{self.experiment_name}' is already running and ready.")
+            # Manifests should have been fetched by check_status -> _get_status
+            if not self.nodes:
+                 logging.warning("Experiment is READY but no nodes found. Attempting to fetch/parse manifests again.")
+                 try:
+                      self._get_manifests()._parse_manifests()
+                 except Exception as e:
+                      logging.error(f"Error fetching/parsing manifests for already running experiment: {e}", exc_info=True)
+                      self.status = self.EXPERIMENT_FAILED # Mark as failed if manifests can't be read
+                      return self.status
+            return self.status
+        elif current_status in [self.EXPERIMENT_PROVISIONING, self.EXPERIMENT_PROVISIONED]:
+            logging.info(f"Experiment '{self.experiment_name}' is currently provisioning/provisioned. Waiting for it to become ready...")
+            # Fall through to the polling loop below
+        elif current_status == self.EXPERIMENT_FAILED:
+             logging.warning(f"Experiment '{self.experiment_name}' is in a failed state. Attempting to terminate and restart.")
+             self.terminate() # Attempt cleanup
+             # Proceed to start below
+        elif current_status == self.EXPERIMENT_NOT_STARTED or current_status == self.EXPERIMENT_NULL or current_status == self.EXPERIMENT_UNKNOWN:
+             logging.info(f"Experiment '{self.experiment_name}' not running or in unknown state. Attempting to start...")
+             # Proceed to start below
         else:
-            self.status = self.EXPERIMENT_FAILED
-            logging.info(response)
+             logging.error(f"Experiment '{self.experiment_name}' in unexpected state {current_status}. Aborting.")
+             return current_status # Return the unexpected status
 
-        # Add extra logging at the end for debugging
-        logging.info(f"Final experiment status: {self.status}")
+        # --- Attempt to start if needed ---
+        if self.status != self.EXPERIMENT_PROVISIONING and self.status != self.EXPERIMENT_PROVISIONED:
+            logging.info('Starting experiment {}'.format(self.experiment_name))
+            rval, response = prpc.start_experiment(self.experiment_name,
+                                                self.project_name,
+                                                self.profile_name)
+            if rval != prpc.RESPONSE_SUCCESS:
+                self.status = self.EXPERIMENT_FAILED
+                logging.error(f"Failed to initiate experiment start. Response: {response}")
+                return self.status
+            # Update status immediately after attempting start
+            self._get_status()
+            # Handle immediate failure after start attempt
+            if self.status == self.EXPERIMENT_FAILED:
+                 logging.error("Experiment entered failed state immediately after start request.")
+                 return self.status
+
+        # --- Wait loop (common for both starting and already provisioning) ---
+        logging.info(f"Waiting for experiment '{self.experiment_name}' to become ready...")
+        poll_count = 0
+        # Use self.status which is updated by _get_status
+        while self.status in [self.EXPERIMENT_PROVISIONING, self.EXPERIMENT_PROVISIONED, self.EXPERIMENT_NOT_STARTED, self.EXPERIMENT_UNKNOWN] and poll_count < self._poll_count_max:
+            logging.info(f"Polling experiment status (attempt {poll_count+1}/{self._poll_count_max}). Current status: {self.status}")
+            
+            # Wait before checking status again
+            logging.info(f"Waiting {self.POLL_INTERVAL_S} seconds before next status check...")
+            time.sleep(self.POLL_INTERVAL_S)
+            
+            self._get_status() # Update status and potentially manifests
+            poll_count += 1
+
+        # --- Final status check ---
+        if self.status == self.EXPERIMENT_READY:
+             logging.info(f"Experiment '{self.experiment_name}' is now READY.")
+             # Ensure nodes are populated if they weren't already
+             if not self.nodes:
+                  logging.warning("Experiment became READY but nodes list is empty. This might indicate a manifest parsing issue.")
+                  # Attempt parse again just in case
+                  try:
+                       self._get_manifests()._parse_manifests()
+                       if not self.nodes:
+                            logging.error("Manifest parsing confirmed empty node list even though experiment is READY.")
+                            self.status = self.EXPERIMENT_FAILED # Treat as failure if node info missing
+                  except Exception as e:
+                       logging.error(f"Error parsing manifests after experiment became ready: {e}", exc_info=True)
+                       self.status = self.EXPERIMENT_FAILED
+        elif self.status == self.EXPERIMENT_FAILED:
+            logging.error(f"Experiment '{self.experiment_name}' failed during provisioning.")
+        else: # Timeout or other unexpected state
+            logging.error(f"Experiment '{self.experiment_name}' did not become ready within the timeout period. Final status: {self.status}")
+            if self.status not in [self.EXPERIMENT_FAILED, self.EXPERIMENT_NULL]:
+                 self.status = self.EXPERIMENT_FAILED # Mark as failed if timed out
+
+        logging.info(f"Final experiment status after start_and_wait: {self.status}")
         return self.status
 
     def terminate(self):
@@ -225,50 +293,70 @@ class PowderExperiment:
         """
         rval, response = prpc.get_experiment_status(self.project_name,
                                                     self.experiment_name)
-        if rval == prpc.RESPONSE_SUCCESS:
-            output = response['output']
-            # Use strip() to remove leading/trailing whitespace before checking
-            stripped_output = output.strip()
-            logging.info(f"Raw status response: '{stripped_output}'")
-            
-            # Check if the output *starts with* the expected status string
-            if stripped_output.startswith('Status: ready'):
-                self.status = self.EXPERIMENT_READY
-                self.still_provisioning = False
-                # --- Add logging before the call ---
-                logging.debug("Status is READY. Attempting to get and parse manifests...")
-                try:
-                    self._get_manifests()._parse_manifests()
-                    # --- Add logging after the call ---
-                    logging.debug("Successfully returned from _get_manifests()._parse_manifests()")
-                except Exception as e:
-                    logging.error("An unexpected error occurred during manifest fetching/parsing in _get_status", exc_info=True)
-                    # Decide how to handle this - maybe set status to failed?
-                    # self.status = self.EXPERIMENT_FAILED 
-            elif stripped_output.startswith('Status: provisioning'):
-                self.status = self.EXPERIMENT_PROVISIONING
-                self.still_provisioning = True
-            elif stripped_output.startswith('Status: provisioned'):
-                self.status = self.EXPERIMENT_PROVISIONED
-                self.still_provisioning = True
-            elif stripped_output.startswith('Status: failed'):
-                self.status = self.EXPERIMENT_FAILED
-                self.still_provisioning = False
-            else:
-                logging.warning(f"Unknown status response: '{stripped_output}'")
-                # Keep polling if status is unknown but looks like provisioning output
-                if 'UUID:' in stripped_output and 'wbstore:' in stripped_output:
-                     logging.warning("Assuming provisioning is still in progress despite unknown status line.")
-                     self.still_provisioning = True
-                     # Optionally set a specific status or keep the previous one
-                     # self.status = self.EXPERIMENT_PROVISIONING # Or keep self.status as is
+        
+        # --- Handle case where experiment doesn't exist ---
+        # Check rval first, as 'output' might not be present on error
+        if rval == prpc.RESPONSE_BADARGS or (rval == prpc.RESPONSE_ERROR and response and "No such experiment" in response.get('output', '')):
+             logging.info(f"Experiment '{self.experiment_name}' does not exist.")
+             self.status = self.EXPERIMENT_NOT_STARTED
+             self.still_provisioning = False
+             self.nodes = {} # Clear nodes if experiment doesn't exist
+             self._manifests = None
+             return self
+        elif rval != prpc.RESPONSE_SUCCESS:
+            logging.error(f"Failed to get experiment status. Rval: {rval}, Response: {response}")
+            # Keep previous status? Or set to unknown/failed? Let's try unknown.
+            self.status = self.EXPERIMENT_UNKNOWN 
+            self.still_provisioning = False # Assume not provisioning if status check failed
+            return self
+        # --- End non-existence check ---
+
+        # Proceed with parsing if rval was SUCCESS
+        output = response.get('output', '') # Use .get for safety
+        stripped_output = output.strip()
+        logging.info(f"Raw status response: '{stripped_output}'")
+
+        new_status = self.EXPERIMENT_UNKNOWN # Default if parsing fails
+        new_still_provisioning = False
+
+        if stripped_output.startswith('Status: ready'):
+            new_status = self.EXPERIMENT_READY
+            new_still_provisioning = False
+            # --- Add logging before the call ---
+            logging.debug("Status is READY. Attempting to get and parse manifests...")
+            try:
+                # Only fetch/parse if nodes aren't already populated
+                if not self.nodes:
+                     self._get_manifests()._parse_manifests()
+                     logging.debug("Successfully returned from _get_manifests()._parse_manifests()")
                 else:
-                     self.still_provisioning = False
-            
-            logging.info(f"Updated status to {self.status}, still_provisioning={self.still_provisioning}")
+                     logging.debug("Nodes already populated, skipping manifest fetch/parse.")
+            except Exception as e:
+                logging.error("An unexpected error occurred during manifest fetching/parsing in _get_status", exc_info=True)
+                new_status = self.EXPERIMENT_FAILED # If manifest fails for a ready experiment, mark failed
+        elif stripped_output.startswith('Status: provisioning'):
+            new_status = self.EXPERIMENT_PROVISIONING
+            new_still_provisioning = True
+        elif stripped_output.startswith('Status: provisioned'):
+            new_status = self.EXPERIMENT_PROVISIONED
+            new_still_provisioning = True
+        elif stripped_output.startswith('Status: failed'):
+            new_status = self.EXPERIMENT_FAILED
+            new_still_provisioning = False
         else:
-            logging.error('failed to get experiment status')
-            self.still_provisioning = False
+            logging.warning(f"Unknown status response: '{stripped_output}'")
+            # Keep polling if status is unknown but looks like provisioning output
+            if 'UUID:' in stripped_output: # Basic check for ongoing process
+                 logging.warning("Assuming provisioning is still in progress despite unknown status line.")
+                 new_status = self.EXPERIMENT_PROVISIONING # Treat as provisioning
+                 new_still_provisioning = True
+            else:
+                 new_status = self.EXPERIMENT_UNKNOWN # Set to unknown otherwise
+                 new_still_provisioning = False
+
+        self.status = new_status
+        self.still_provisioning = new_still_provisioning
+        logging.info(f"Updated status to {self.status}, still_provisioning={self.still_provisioning}")
 
         return self
 
