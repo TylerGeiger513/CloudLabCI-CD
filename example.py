@@ -28,8 +28,8 @@ class OAINoS1Controlled:
     """
 
     # Powder experiment credentials
-    PROJECT_NAME = os.environ.get('CLOUDLAB_PROJECT_NAME', 'PowderProfiles')
-    PROFILE_NAME = os.environ.get('CLOUDLAB_PROFILE_NAME', 'oai-nos1-wired')
+    PROJECT_NAME = os.environ.get('PROJECT_NAME', 'PowderProfiles')
+    PROFILE_NAME = os.environ.get('PROFILE_NAME', 'oai-nos1-wired')
     EXPERIMENT_NAME_PREFIX = 'exp-'
 
     TEST_SUCCEEDED   = 0  # all steps succeeded
