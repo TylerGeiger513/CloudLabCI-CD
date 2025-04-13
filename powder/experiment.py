@@ -109,7 +109,10 @@ class PowderExperiment:
                 response_json = json.loads(response['output'])
                 # --- Logging for raw XML ---
                 logging.debug("Raw manifests received from API:")
-                # ...(existing loop to log xml_content)...
+                for key, xml_content in response_json.items():
+                     logging.debug(f"--- Manifest Key: {key} ---")
+                     logging.debug(xml_content)
+                     logging.debug("--- End Manifest ---")
                 
                 # --- Add logging before parsing ---
                 logging.debug("Attempting to parse XML manifests using xmltodict...")
@@ -119,8 +122,6 @@ class PowderExperiment:
                 logging.info('got manifests')
                 # --- End logging ---
                 
-                self._manifests = [xmltodict.parse(response_json[key]) for key in response_json.keys()]
-                logging.info('got manifests')
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to decode JSON response from get_experiment_manifests: {e}")
                 logging.error(f"Raw response output: {response.get('output', 'N/A')}")

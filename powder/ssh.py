@@ -19,7 +19,7 @@ class SSHConnection:
         ssh (pexpect child): A handle to a session started by pexpect.spawn()
     """
 
-    DEFAULT_PROMPT = '\$'
+    DEFAULT_PROMPT = r'\$'
 
     def __init__(self, ip_address, username=None, password=None, prompt=DEFAULT_PROMPT):
         self.prompt = prompt
