@@ -163,7 +163,11 @@ class OAINoS1Controlled:
                 "hostname -f && "
                 f"echo '{success_marker.decode()}'"
             )
-            full_cmd = f"stdbuf -o0 {cmd} 2>&1 | stdbuf -o0 tee /tmp/{log_filename}"
+            # --- Modify full_cmd to use bash -c ---
+            # Escape any double quotes within cmd if necessary, though it looks okay here.
+            # Apply stdbuf to the bash invocation, not directly to cd.
+            full_cmd = f"stdbuf -o0 bash -c \"{cmd}\" 2>&1 | tee /tmp/{log_filename}"
+            # --- End modification ---
 
             # Execute command, expecting the success marker (restore original timeout)
             output = ssh_deploy.command(full_cmd, expectedline=success_marker.decode(), timeout=120) 
