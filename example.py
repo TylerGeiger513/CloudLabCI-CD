@@ -166,7 +166,15 @@ class OAINoS1Controlled:
             # --- Modify full_cmd to use bash -c ---
             # Escape any double quotes within cmd if necessary, though it looks okay here.
             # Apply stdbuf to the bash invocation, not directly to cd.
-            full_cmd = f"stdbuf -o0 bash -c \"{cmd}\" 2>&1 | tee /tmp/{log_filename}"
+            full_cmd = (
+                f"stdbuf -o0 bash -c \"set +H && cd {repo_dir} && "  # Disable history expansion
+                "echo '--- Checking repository ---' && "
+                "ls -la && "
+                "echo '--- Running hostname ---' && "
+                "hostname && "
+                "echo '--- Running hostname -f ---' && "
+                f"echo 'Deploy node setup complete\\!'\" 2>&1 | tee /tmp/{log_filename}"  # Escape '!'
+            )
             # --- End modification ---
 
             # Execute command, expecting the success marker (restore original timeout)
