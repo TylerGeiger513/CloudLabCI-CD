@@ -22,6 +22,7 @@ jobs:
         # Set the necessary environment variables for CloudLab
         echo "USER=${{ secrets.CLOUDLAB_USER }}" >> $GITHUB_ENV
         echo "PWORD=${{ secrets.CLOUDLAB_PASS }}" >> $GITHUB_ENV
+        echo "KEYPWORD=${{ secrets.CLOUDLAB_PASS }}" >> $GITHUB_ENV
         echo "PROJECT_NAME=${{ secrets.CLOUDLAB_PROJECT_NAME }}" >> $GITHUB_ENV
         echo "PROFILE_NAME=${{ secrets.CLOUDLAB_PROFILE_NAME }}" >> $GITHUB_ENV
         echo "CERT=./cloudlab.pem" >> $GITHUB_ENV
