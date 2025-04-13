@@ -53,6 +53,7 @@ class PowderExperiment:
         self.project_name = project_name
         self.profile_name = profile_name
         self.status = self.EXPERIMENT_NOT_STARTED
+        self.still_provisioning = False  # Initialize this explicitly
         self.nodes = dict()
         self._manifests = None
         self._poll_count_max = self.PROVISION_TIMEOUT_S // self.POLL_INTERVAL_S
@@ -71,12 +72,12 @@ class PowderExperiment:
             logging.info(f"Initial status: {self.status}, still_provisioning: {getattr(self, 'still_provisioning', 'Not set')}")
 
             poll_count = 0
-            while getattr(self, 'still_provisioning', False) and poll_count < self._poll_count_max:
+            while self.still_provisioning and poll_count < self._poll_count_max:
                 logging.info(f"Polling experiment status (attempt {poll_count+1}/{self._poll_count_max})")
                 self._get_status()
-                poll_count += 1  # Increment the poll count!
+                poll_count += 1
                 
-                if poll_count < self._poll_count_max and getattr(self, 'still_provisioning', False):
+                if self.still_provisioning and poll_count < self._poll_count_max:
                     logging.info(f"Waiting {self.POLL_INTERVAL_S} seconds before next status check...")
                     time.sleep(self.POLL_INTERVAL_S)
         else:
@@ -133,27 +134,34 @@ class PowderExperiment:
     def _get_status(self):
         """Get experiment status and update local state. If the experiment is ready, get
         and parse the associated manifests.
-
         """
         rval, response = prpc.get_experiment_status(self.project_name,
                                                     self.experiment_name)
         if rval == prpc.RESPONSE_SUCCESS:
             output = response['output']
+            logging.info(f"Raw status response: '{output.strip()}'")
+            
             if output == 'Status: ready\n':
                 self.status = self.EXPERIMENT_READY
+                self.still_provisioning = False
                 self._get_manifests()._parse_manifests()
             elif output == 'Status: provisioning\n':
                 self.status = self.EXPERIMENT_PROVISIONING
+                self.still_provisioning = True
             elif output == 'Status: provisioned\n':
                 self.status = self.EXPERIMENT_PROVISIONED
+                self.still_provisioning = True
             elif output == 'Status: failed\n':
                 self.status = self.EXPERIMENT_FAILED
-
-            self.still_provisioning = self.status in [self.EXPERIMENT_PROVISIONING,
-                                                      self.EXPERIMENT_PROVISIONED]
-            logging.info('experiment status is {}'.format(output.strip()))
+                self.still_provisioning = False
+            else:
+                logging.warning(f"Unknown status response: '{output.strip()}'")
+                self.still_provisioning = False
+            
+            logging.info(f"Updated status to {self.status}, still_provisioning={self.still_provisioning}")
         else:
             logging.error('failed to get experiment status')
+            self.still_provisioning = False
 
         return self
 
