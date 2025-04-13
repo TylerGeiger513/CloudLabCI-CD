@@ -64,19 +64,27 @@ class PowderExperiment:
         """Start the experiment and wait for READY or FAILED status."""
         logging.info('starting experiment {}'.format(self.experiment_name))
         rval, response = prpc.start_experiment(self.experiment_name,
-                                               self.project_name,
-                                               self.profile_name)
+                                            self.project_name,
+                                            self.profile_name)
         if rval == prpc.RESPONSE_SUCCESS:
             self._get_status()
+            logging.info(f"Initial status: {self.status}, still_provisioning: {getattr(self, 'still_provisioning', 'Not set')}")
 
             poll_count = 0
-            while self.still_provisioning and poll_count < self._poll_count_max:
+            while getattr(self, 'still_provisioning', False) and poll_count < self._poll_count_max:
+                logging.info(f"Polling experiment status (attempt {poll_count+1}/{self._poll_count_max})")
                 self._get_status()
-                time.sleep(self.POLL_INTERVAL_S)
+                poll_count += 1  # Increment the poll count!
+                
+                if poll_count < self._poll_count_max and getattr(self, 'still_provisioning', False):
+                    logging.info(f"Waiting {self.POLL_INTERVAL_S} seconds before next status check...")
+                    time.sleep(self.POLL_INTERVAL_S)
         else:
             self.status = self.EXPERIMENT_FAILED
             logging.info(response)
 
+        # Add extra logging at the end for debugging
+        logging.info(f"Final experiment status: {self.status}")
         return self.status
 
     def terminate(self):
