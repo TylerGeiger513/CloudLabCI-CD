@@ -111,6 +111,7 @@ class OAINoS1Controlled:
             return True
 
     # --- New method for deploy-node setup ---
+        # --- New method for deploy-node setup ---
     def _setup_deploy_node(self):
         """Sets up the deploy-node."""
         logging.info('Setting up deploy-node...')
@@ -121,32 +122,39 @@ class OAINoS1Controlled:
             # Use self.exp.nodes['deploy-node'] which was verified in _start_powder_experiment
             ssh_deploy = self.exp.nodes['deploy-node'].ssh.open()
             
-            # Example commands: Check if repo exists and run a simple command
-            # Use stdbuf and tee to capture output to a log file on the node
-            # Add an echo command at the end to signify completion
+            # --- Add hostname -f to the command string ---
             cmd = (
                 "cd /local/repository && "
-                "echo 'Checking repository...' && "
+                "echo '--- Checking repository ---' && "
                 "ls -la && "
-                "echo 'Running hostname...' && "
+                "echo '--- Running hostname ---' && "
                 "hostname && "
-                f"echo '{success_marker.decode()}'" # Echo the success marker
+                "echo '--- Running hostname -f ---' && " # Add echo for clarity
+                "hostname -f && "                       # Add hostname -f command
+                f"echo '{success_marker.decode()}'" # Echo the success marker (must be last)
             )
+            # --- End command modification ---
+            
             full_cmd = f"stdbuf -o0 {cmd} 2>&1 | stdbuf -o0 tee /tmp/{log_filename}"
 
+            # --- Capture and log the output ---
             # Execute command, expecting the success marker
-            ssh_deploy.command(full_cmd, expectedline=success_marker.decode(), timeout=120) 
+            output = ssh_deploy.command(full_cmd, expectedline=success_marker.decode(), timeout=120) 
+            # Log the captured output to the runner's log
+            logging.info(f"--- Remote Command Output (deploy-node) ---\n{output.strip()}") 
+            # --- End output capture and logging ---
             
-            # Copy log back
+            # Copy log back (optional now, but good for full debugging)
             ssh_deploy.copy_from(remote_path=f'/tmp/{log_filename}', local_path=f'./{log_filename}')
             ssh_deploy.close(5)
 
-            # Check the local log file for the success marker
+            # Check the local log file for the success marker (still useful as a final check)
             if self._find_bytes_in_file(bytestr=success_marker, filename=log_filename):
                 logging.info('deploy-node setup complete.')
                 return True
             else:
-                logging.error(f'deploy-node setup failed. Check {log_filename}.')
+                # This case is less likely now if the command() succeeded, but keep for robustness
+                logging.error(f'deploy-node setup failed: Success marker not found in log file. Check {log_filename}.')
                 return False
                 
         except KeyError:
@@ -156,12 +164,19 @@ class OAINoS1Controlled:
             logging.error(f"An error occurred during deploy-node setup: {e}", exc_info=True)
             # Attempt to copy log file even if command failed before completion
             try:
-                ssh_deploy = self.exp.nodes['deploy-node'].ssh # Re-use if open failed, or get new
-                ssh_deploy.copy_from(remote_path=f'/tmp/{log_filename}', local_path=f'./{log_filename}')
-                ssh_deploy.close(5)
+                # Ensure ssh_deploy exists before trying to use it
+                if 'ssh_deploy' in locals() and ssh_deploy.ssh and not ssh_deploy.ssh.closed:
+                     ssh_deploy.copy_from(remote_path=f'/tmp/{log_filename}', local_path=f'./{log_filename}')
+                     ssh_deploy.close(5)
+                else:
+                     # If connection failed early, try getting a new handle just for copying
+                     ssh_conn_for_copy = self.exp.nodes['deploy-node'].ssh
+                     ssh_conn_for_copy.copy_from(remote_path=f'/tmp/{log_filename}', local_path=f'./{log_filename}')
+                     # No need to close if we didn't open it here
             except Exception as copy_e:
-                 logging.error(f"Could not retrieve log file after setup error: {copy_e}")
+                 logging.error(f"Could not retrieve log file '{log_filename}' after setup error: {copy_e}")
             return False
+    # --- End new method ---
     # --- End new method ---
 
 
