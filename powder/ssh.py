@@ -27,6 +27,7 @@ class SSHConnection:
         if username is None:
             try:
                 self.username = os.environ['USER']
+                self.password = os.environ.get('PWORD') 
             except KeyError:
                 logging.error('no USER variable in environment variable and no username provided')
                 raise ValueError("Username not provided and USER environment variable not set")
