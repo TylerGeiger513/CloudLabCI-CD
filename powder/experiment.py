@@ -107,12 +107,16 @@ class PowderExperiment:
         if rval == prpc.RESPONSE_SUCCESS:
             try:
                 response_json = json.loads(response['output'])
-                # --- Add logging for raw XML ---
+                # --- Logging for raw XML ---
                 logging.debug("Raw manifests received from API:")
-                for key, xml_content in response_json.items():
-                    logging.debug(f"--- Manifest Key: {key} ---")
-                    logging.debug(xml_content)
-                    logging.debug("--- End Manifest ---")
+                # ...(existing loop to log xml_content)...
+                
+                # --- Add logging before parsing ---
+                logging.debug("Attempting to parse XML manifests using xmltodict...")
+                self._manifests = [xmltodict.parse(response_json[key]) for key in response_json.keys()]
+                # --- Add logging after parsing ---
+                logging.debug(f"Successfully parsed {len(self._manifests)} manifests using xmltodict.")
+                logging.info('got manifests')
                 # --- End logging ---
                 
                 self._manifests = [xmltodict.parse(response_json[key]) for key in response_json.keys()]
@@ -230,7 +234,16 @@ class PowderExperiment:
             if stripped_output.startswith('Status: ready'):
                 self.status = self.EXPERIMENT_READY
                 self.still_provisioning = False
-                self._get_manifests()._parse_manifests()
+                # --- Add logging before the call ---
+                logging.debug("Status is READY. Attempting to get and parse manifests...")
+                try:
+                    self._get_manifests()._parse_manifests()
+                    # --- Add logging after the call ---
+                    logging.debug("Successfully returned from _get_manifests()._parse_manifests()")
+                except Exception as e:
+                    logging.error("An unexpected error occurred during manifest fetching/parsing in _get_status", exc_info=True)
+                    # Decide how to handle this - maybe set status to failed?
+                    # self.status = self.EXPERIMENT_FAILED 
             elif stripped_output.startswith('Status: provisioning'):
                 self.status = self.EXPERIMENT_PROVISIONING
                 self.still_provisioning = True

@@ -46,6 +46,8 @@ class OAINoS1Controlled:
     def run(self):
         if not self._start_powder_experiment():
             self._finish(self.TEST_NOT_STARTED)
+        # --- Add logging here ---
+        logging.info("Experiment started successfully. Proceeding to node setup...")
 
         if not self._setup_nodes():
             self._finish(self.TEST_FAILED)
