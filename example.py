@@ -111,12 +111,12 @@ class OAINoS1Controlled:
             return True
 
     # --- New method for deploy-node setup ---
-        # --- New method for deploy-node setup ---
     def _setup_deploy_node(self):
         """Sets up the deploy-node, waiting for the repository clone to complete."""
         logging.info('Setting up deploy-node...')
         log_filename = 'setup_deploy_node.log'
-        success_marker = b'Deploy node setup complete!'
+        # Remove exclamation mark from success_marker
+        success_marker = b'Deploy node setup complete' 
         repo_dir = "/local/repository"
         max_wait_time = 300 # Max seconds to wait for repo
         wait_interval = 10  # Seconds between checks
@@ -161,11 +161,13 @@ class OAINoS1Controlled:
                 "hostname && "
                 "echo '--- Running hostname -f ---' && "
                 "hostname -f && "
-                f"echo '{success_marker.decode()}'"
+                # Remove exclamation mark from echo command
+                f"echo '{success_marker.decode()}'" 
             )
             # --- Modify full_cmd to use bash -c ---
             # Escape any double quotes within cmd if necessary, though it looks okay here.
             # Apply stdbuf to the bash invocation, not directly to cd.
+            # Remove the escaped exclamation mark from the echo command within full_cmd
             full_cmd = (
                 f"stdbuf -o0 bash -c \"set +H && cd {repo_dir} && "  # Disable history expansion
                 "echo '--- Checking repository ---' && "
@@ -173,12 +175,13 @@ class OAINoS1Controlled:
                 "echo '--- Running hostname ---' && "
                 "hostname && "
                 "echo '--- Running hostname -f ---' && "
-                f"echo 'Deploy node setup complete\\!'\" 2>&1 | tee /tmp/{log_filename}"  # Escape '!'
+                f"echo 'Deploy node setup complete'\" 2>&1 | tee /tmp/{log_filename}" # Removed \!
             )
             # --- End modification ---
 
             # Execute command, expecting the success marker (restore original timeout)
-            output = ssh_deploy.command(full_cmd, expectedline=success_marker.decode(), timeout=120) 
+            # Modify expectedline to remove the exclamation mark
+            output = ssh_deploy.command(full_cmd, expectedline='Deploy node setup complete', timeout=120) 
             logging.info(f"--- Remote Command Output (deploy-node) ---\n{output.strip()}")
             # --- End original command chain ---
 
@@ -186,7 +189,7 @@ class OAINoS1Controlled:
             ssh_deploy.copy_from(remote_path=f'/tmp/{log_filename}', local_path=f'./{log_filename}')
             ssh_deploy.close(5)
 
-            # Check log file
+            # Check log file (uses the updated success_marker)
             if self._find_bytes_in_file(bytestr=success_marker, filename=log_filename):
                 logging.info('deploy-node setup complete.')
                 return True
@@ -228,7 +231,6 @@ class OAINoS1Controlled:
             except Exception as copy_e:
                  logging.error(f"Could not retrieve log file '{log_filename}' after setup error: {copy_e}")
             return False
-    # --- End new method ---
     # --- End new method ---
 
 
