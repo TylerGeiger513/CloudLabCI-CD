@@ -139,24 +139,34 @@ class PowderExperiment:
                                                     self.experiment_name)
         if rval == prpc.RESPONSE_SUCCESS:
             output = response['output']
-            logging.info(f"Raw status response: '{output.strip()}'")
+            # Use strip() to remove leading/trailing whitespace before checking
+            stripped_output = output.strip()
+            logging.info(f"Raw status response: '{stripped_output}'")
             
-            if output == 'Status: ready\n':
+            # Check if the output *starts with* the expected status string
+            if stripped_output.startswith('Status: ready'):
                 self.status = self.EXPERIMENT_READY
                 self.still_provisioning = False
                 self._get_manifests()._parse_manifests()
-            elif output == 'Status: provisioning\n':
+            elif stripped_output.startswith('Status: provisioning'):
                 self.status = self.EXPERIMENT_PROVISIONING
                 self.still_provisioning = True
-            elif output == 'Status: provisioned\n':
+            elif stripped_output.startswith('Status: provisioned'):
                 self.status = self.EXPERIMENT_PROVISIONED
                 self.still_provisioning = True
-            elif output == 'Status: failed\n':
+            elif stripped_output.startswith('Status: failed'):
                 self.status = self.EXPERIMENT_FAILED
                 self.still_provisioning = False
             else:
-                logging.warning(f"Unknown status response: '{output.strip()}'")
-                self.still_provisioning = False
+                logging.warning(f"Unknown status response: '{stripped_output}'")
+                # Keep polling if status is unknown but looks like provisioning output
+                if 'UUID:' in stripped_output and 'wbstore:' in stripped_output:
+                     logging.warning("Assuming provisioning is still in progress despite unknown status line.")
+                     self.still_provisioning = True
+                     # Optionally set a specific status or keep the previous one
+                     # self.status = self.EXPERIMENT_PROVISIONING # Or keep self.status as is
+                else:
+                     self.still_provisioning = False
             
             logging.info(f"Updated status to {self.status}, still_provisioning={self.still_provisioning}")
         else:
