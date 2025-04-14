@@ -31,7 +31,8 @@ EXIT_NODE_MISSING = 3 # Target node not found in ready experiment
 
 def run_experiment_lifecycle():
     """
-    Ensures the 'prod' experiment is running and ready, then calls init_node.py.
+    Ensures the 'prod' experiment is running and ready, then calls init_node.py,
+    passing a flag if the experiment was already deployed.
     """
     logging.info(f"Starting experiment lifecycle for '{EXPERIMENT_NAME}'...")
     logging.info(f"Using Project: {PROJECT_NAME}, Profile: {PROFILE_NAME}")
@@ -39,6 +40,15 @@ def run_experiment_lifecycle():
     exp = pexp.PowderExperiment(experiment_name=EXPERIMENT_NAME,
                                 project_name=PROJECT_NAME,
                                 profile_name=PROFILE_NAME)
+
+    # Check initial status BEFORE trying to start/wait
+    initial_status = exp.check_status()
+    was_already_deployed = initial_status in [
+        pexp.PowderExperiment.EXPERIMENT_READY,
+        pexp.PowderExperiment.EXPERIMENT_PROVISIONING,
+        pexp.PowderExperiment.EXPERIMENT_PROVISIONED
+    ]
+    logging.info(f"Initial experiment status: {initial_status}. Was already deployed: {was_already_deployed}")
 
     # Ensure the experiment is ready (starts if needed, waits if provisioning)
     exp_status = exp.start_and_wait()
@@ -67,13 +77,22 @@ def run_experiment_lifecycle():
 
     # --- Execute init_node.py ---
     init_script_path = os.path.join(os.path.dirname(__file__), 'init_node.py')
-    logging.info(f"Executing node initialization script: {init_script_path} for IP {node_ip}")
+    logging.info(f"Preparing to execute node initialization script: {init_script_path} for IP {node_ip}")
+
+    # Build the command list for subprocess
+    command_list = [sys.executable, init_script_path, '--ip', node_ip]
+    if was_already_deployed:
+        logging.info("Adding --isDeployed flag as experiment was already running.")
+        command_list.append('--isDeployed')
+    else:
+        logging.info("Not adding --isDeployed flag as experiment was started fresh.")
+
+    logging.info(f"Executing command: {' '.join(command_list)}")
 
     try:
-        # Pass IP as command line argument
-        # Ensure python3 is used explicitly if needed
+        # Pass IP and potentially the flag as command line arguments
         process = subprocess.run(
-            [sys.executable, init_script_path, '--ip', node_ip],
+            command_list, # Use the constructed list
             capture_output=True,
             text=True,
             check=True, # Raise CalledProcessError if script returns non-zero exit code
